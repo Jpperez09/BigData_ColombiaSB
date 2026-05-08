@@ -1,0 +1,42 @@
+# Geographic weights — neighbourhood × city multiplier
+#
+# 1.0 → premium commercial / high-purchasing-power zones where chat-based
+#       agents work best (English-fluent owners, paying customers).
+# 0.8 → strong commercial neighbourhoods, mainstream demographics.
+# 0.6 → working-class commercial areas where chat sales exist but ARPU is lower.
+#
+# All zones from target_zones.py are listed here; anything else falls back to
+# `default`. Lookup by exact (city, neighborhood) match (lowercase, no accents).
+
+cities:
+  medellin:
+    el_poblado_provenza_lleras:   1.0
+    ciudad_del_rio:               1.0
+    laureles:                     0.9
+    estadio_los_colores:          0.8
+    envigado_zona_viva:           1.0
+    sabaneta_parque_mayorca:      0.9
+    belen_rosales:                0.8
+    itagui_commercial:            0.7
+    rionegro_llanogrande:         0.9
+
+  bogota:
+    parque_93_chico_virrey:               1.0
+    zona_t_andino_retiro:                 1.0
+    rosales_nogal:                        1.0
+    usaquen_santa_barbara:                0.95
+    unicentro_cedritos:                   0.9
+    chapinero_alto_zona_g:                0.9
+    quinta_camacho_chapinero_central:     0.9
+    salitre_ciudad_empresarial:           0.85
+    la_castellana_pasadena:               0.85
+    colina_campestre_parque_la_colina:    0.9
+    modelia_commercial:                   0.8
+    fontibon_commercial:                  0.7
+    teusaquillo_parkway:                  0.85
+
+# Cities present in the data but not in the lookup above (default urban weight).
+city_default: 0.8
+
+# Anything else (no city match).
+default: 0.6
