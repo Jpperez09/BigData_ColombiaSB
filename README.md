@@ -101,9 +101,13 @@ Run `invoke --list` to see the full menu, or use any of the tasks below:
 | `invoke scrape-instagram` | Scrape Instagram business profiles (Week 1) |
 | `invoke scrape-directories` | Scrape public business directories (Week 1) |
 | `invoke clean` | Remove intermediate and output files (Week 2) |
-| `invoke score` | Run the AI Readiness scoring pipeline (Week 3) |
+| `invoke resolve` | Entity resolution: dedupe all raw sources → `businesses_canonical.parquet` |
+| `invoke score` | AI Readiness scoring → `data/clean/top_500.csv` |
 | `invoke dashboard` | Launch the Streamlit dashboard |
 | `invoke load --source SOURCE --path PATH` | Load a Parquet file into Supabase |
+| `invoke load-gmaps` | Load both gmaps city parquets into `businesses_raw` |
+| `invoke load-canonical` | Load `businesses_canonical.parquet` into Supabase |
+| `invoke pipeline` | End-to-end: load gmaps → resolve → load canonical → score |
 
 ---
 
@@ -155,6 +159,46 @@ invoke scrape-gmaps
 - `data/raw/gmaps/{city}.parquet` — deduplicated city-level
 - `data/interim/gmaps_websites.parquet` — handoff for the Instagram scraper
 - `data/interim/gmaps_place_categories.parquet` — every (place_id, zone, category, h3_cell) tuple
+
+---
+
+## Entity Resolution & AI Readiness Score
+
+Once raw parquets exist, the scoring layer dedupes them and ranks businesses
+by their fit for a WhatsApp-based AI sales agent.
+
+```bash
+# 1. Merge all data/raw/**/*.parquet into deduplicated businesses_canonical.parquet
+invoke resolve                  # threshold 85 (default)
+invoke resolve --dry-run        # preview without writing
+
+# 2. Score and export top 500 leads
+invoke score                    # writes data/clean/top_500.csv
+invoke score --city "Medellín"  # filter to one city
+invoke score --min-score 40     # only high-quality leads
+
+# OR run the full pipeline in one shot (after the scrape is done):
+invoke pipeline                 # load_gmaps → resolve → load_canonical → score
+```
+
+**Entity resolution** uses two-stage blocking — exact `(city, phone_e164)`
+plus exact `(city, first_significant_token)` (skipping generic Spanish
+business words like *restaurante*, *salón*, *peluquería*) — followed by
+rapidfuzz `WRatio >= 85` within each block. Clusters are merged with
+Union-Find and assigned a stable `master_id = uuid5(DNS, "city|name")`.
+
+**AI Readiness Score** is a 0–100 weighted sum:
+
+| Signal | Max points |
+| ------ | ---------- |
+| Has website | 15 |
+| Has phone | 10 |
+| Has Instagram handle | 20 |
+| Instagram followers (log-scaled, full at 10k) | 15 |
+| Posted in last 90 days | 10 |
+| Has Instagram catalog | 10 |
+| Rating (linear, full at 5★) | 10 |
+| Reviews count (log-scaled, full at 500) | 10 |
 
 ---
 

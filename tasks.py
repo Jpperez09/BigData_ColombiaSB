@@ -149,6 +149,52 @@ def dashboard(c):
 
 
 @task
-def load(c, source, path):
+def load(c, source, path, table="businesses_raw", dry_run=False):
     """Load a Parquet file into Supabase (--source SOURCE --path PATH)."""
-    c.run(f"python -m utils.load_to_supabase --source {source} --path {path}")
+    cmd = f"python -m utils.load_to_supabase --source {source} --path {path} --table {table}"
+    if dry_run:
+        cmd += " --dry-run"
+    c.run(cmd)
+
+
+@task
+def load_gmaps(c, dry_run=False):
+    """Load both gmaps city parquets into businesses_raw.
+
+    Reads the city-level deduplicated files written by the scraper:
+      data/raw/gmaps/medellin.parquet
+      data/raw/gmaps/bogota.parquet
+    """
+    flag = " --dry-run" if dry_run else ""
+    for city in ("medellin", "bogota"):
+        path = f"data/raw/gmaps/{city}.parquet"
+        c.run(
+            f"python -m utils.load_to_supabase --source gmaps "
+            f"--path {path} --table businesses_raw{flag}"
+        )
+
+
+@task
+def load_canonical(c, dry_run=False):
+    """Load entity-resolved canonical parquet into businesses_canonical."""
+    flag = " --dry-run" if dry_run else ""
+    c.run(
+        f"python -m utils.load_to_supabase --source gmaps "
+        f"--path data/clean/businesses_canonical.parquet "
+        f"--table businesses_canonical{flag}"
+    )
+
+
+@task
+def pipeline(c, dry_run=False):
+    """Full end-to-end: load gmaps → entity resolution → load canonical → score top-500.
+
+    Assumes the scrape has already produced data/raw/gmaps/{medellin,bogota}.parquet.
+
+        invoke pipeline                 # runs the whole thing
+        invoke pipeline --dry-run       # validates everything, no DB writes
+    """
+    load_gmaps(c, dry_run=dry_run)
+    c.run("python -m scoring.entity_resolution")
+    load_canonical(c, dry_run=dry_run)
+    c.run("python -m scoring.features --top-n 500")

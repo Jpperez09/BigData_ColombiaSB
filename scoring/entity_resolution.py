@@ -81,7 +81,9 @@ def _normalise(name: str) -> str:
     ascii_approx = "".join(c for c in nfd if unicodedata.category(c) != "Mn")
     lower = ascii_approx.lower()
     no_legal = LEGAL_SUFFIXES.sub("", lower)
-    return re.sub(r"\s+", " ", no_legal).strip()
+    # Drop residual punctuation left over from stripped suffixes ("s.a.s." → ".")
+    no_punct = re.sub(r"[.,;:]+", " ", no_legal)
+    return re.sub(r"\s+", " ", no_punct).strip()
 
 
 def _first_significant_token(name_normalised: str) -> str:
