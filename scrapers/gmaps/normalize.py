@@ -154,7 +154,7 @@ def google_place_to_business_raw(
             pass
 
     # Classification
-    types: list[str] = details.get("types") or place.get("types") or []
+    types: list[str] = details.get("type") or details.get("types") or place.get("types") or []
     category_raw = _extract_category(types)
 
     # Online presence

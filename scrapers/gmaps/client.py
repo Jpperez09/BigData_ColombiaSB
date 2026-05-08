@@ -31,7 +31,7 @@ _DETAIL_FIELDS = [
     "international_phone_number",
     "rating",
     "user_ratings_total",
-    "types",
+    "type",
     "website",
 ]
 

@@ -31,9 +31,57 @@ def test(c):
 
 
 @task
-def scrape_gmaps(c, city="medellin"):
-    """Scrape Google Maps for a given city (placeholder — Week 1)."""
-    print(f"TODO: implementar en Week 1 (city={city})")
+def gmaps_dry_run(c, priority_max=2):
+    """Print the H3 grid + cost estimate without calling Google APIs."""
+    c.run(
+        f"python -m scrapers.gmaps.run --all-cities --all-categories "
+        f"--dry-run-grid --priority-max {priority_max}"
+    )
+
+
+@task
+def gmaps_estimate(c, priority_max=2, budget_cap_usd=275):
+    """Print a detailed pre-flight cost estimate without calling Google APIs."""
+    c.run(
+        f"python -m scrapers.gmaps.run --all-cities --all-categories "
+        f"--estimate-cost --priority-max {priority_max} --budget-cap-usd {budget_cap_usd}"
+    )
+
+
+@task
+def gmaps_smoke(c, city="medellin", category="restaurants", limit_hexes=5):
+    """Cheap smoke scrape (single city, single category, capped hexes)."""
+    c.run(
+        f"python -m scrapers.gmaps.run --city {city} --category {category} "
+        f"--limit-hexes {limit_hexes} --budget-cap-usd 25"
+    )
+
+
+@task
+def scrape_gmaps(c, city=None, category=None, priority_max=2, budget_cap_usd=275, force=False):
+    """Run the GMaps scraper.
+
+    Defaults: --all-cities, all priority<=2 categories, target-zone H3 grid.
+
+    Examples::
+
+        invoke scrape-gmaps                                # full production run
+        invoke scrape-gmaps --city medellin                # single city
+        invoke scrape-gmaps --priority-max 1               # priority-1 zones+cats only
+        invoke scrape-gmaps --budget-cap-usd 200           # tighter cap
+        invoke scrape-gmaps --force                        # bypass over-budget guard
+    """
+    parts = ["python -m scrapers.gmaps.run"]
+    parts.append(f"--city {city}" if city else "--all-cities")
+    if category:
+        parts.append(f"--category {category}")
+    else:
+        parts.append("--all-categories")
+    parts.append(f"--priority-max {priority_max}")
+    parts.append(f"--budget-cap-usd {budget_cap_usd}")
+    if force:
+        parts.append("--force-over-budget")
+    c.run(" ".join(parts))
 
 
 @task

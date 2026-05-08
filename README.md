@@ -94,13 +94,67 @@ Run `invoke --list` to see the full menu, or use any of the tasks below:
 | `invoke lint` | Check code style with ruff, black, and isort |
 | `invoke fmt` | Auto-format source code with black, isort, and ruff --fix |
 | `invoke test` | Run pytest with coverage for utils and scrapers |
-| `invoke scrape-gmaps --city medellin` | Scrape Google Maps for a given city (Week 1) |
+| `invoke gmaps-dry-run` | Print the H3 grid + cost estimate (no API calls) |
+| `invoke gmaps-estimate` | Detailed pre-flight cost estimate with budget guard |
+| `invoke gmaps-smoke` | Cheap smoke run (single zone × category, capped hexes) |
+| `invoke scrape-gmaps` | Full GMaps scrape — all cities, priority<=2 zones+categories |
 | `invoke scrape-instagram` | Scrape Instagram business profiles (Week 1) |
 | `invoke scrape-directories` | Scrape public business directories (Week 1) |
 | `invoke clean` | Remove intermediate and output files (Week 2) |
 | `invoke score` | Run the AI Readiness scoring pipeline (Week 3) |
 | `invoke dashboard` | Launch the Streamlit dashboard |
 | `invoke load --source SOURCE --path PATH` | Load a Parquet file into Supabase |
+
+---
+
+## Google Maps Scraper — Target Commercial Zones
+
+The GMaps scraper does **not** scrape entire municipalities. Doing so would
+spend ~$5,000 USD against the Google Places API and bury us in low-value
+rural / hillside data. Instead it scrapes inside small named **commercial
+target zones** (Parque 93, Zona T, El Poblado / Provenza, Laureles,
+Envigado Zona Viva, Unicentro / Cedritos, etc.). These are the corridors
+where SMBs are most likely to (a) have customer volume, (b) use WhatsApp /
+Instagram / websites, and (c) afford a premium AI sales agent.
+
+Each zone is filled with H3 hexagonal cells at resolution 7 (~5 km², ~1.2 km
+edge). Saturated cells are adaptively subdivided to resolution 8 or 9.
+
+### Editing zones
+
+Edit [`scrapers/gmaps/target_zones.py`](scrapers/gmaps/target_zones.py).
+Each zone has a `priority` (1, 2, 3) and an `enabled` flag. Defaults run all
+priority<=2 enabled zones.
+
+### Workflow
+
+```bash
+# 1. See what the grid covers + a cost estimate (no API calls)
+invoke gmaps-dry-run
+
+# 2. Detailed pre-flight estimate, with budget guard
+invoke gmaps-estimate
+
+# 3. Cheap smoke run before committing to the full scrape
+invoke gmaps-smoke
+
+# 4. Full production scrape — defaults: --all-cities --priority-max 2 --budget-cap-usd 275
+invoke scrape-gmaps
+```
+
+### Budget controls
+
+- Default hard stop: **USD 275**.
+- Warning logs at $150, $200, $225 (each fired once).
+- Pre-flight estimate aborts if mid-cost > cap unless `--force-over-budget`.
+- Cost log: `logs/gmaps_cost.log`.
+
+### Outputs
+
+- `data/raw/gmaps/{city}_{category}.parquet` — per category × city
+- `data/raw/gmaps/{city}.parquet` — deduplicated city-level
+- `data/interim/gmaps_websites.parquet` — handoff for the Instagram scraper
+- `data/interim/gmaps_place_categories.parquet` — every (place_id, zone, category, h3_cell) tuple
 
 ---
 
