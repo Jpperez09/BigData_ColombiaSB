@@ -167,22 +167,41 @@ class _UF:
 
 
 def _load_all_raw(source_filter: str | None = None) -> pl.DataFrame:
-    """Load all BusinessRaw parquet files and stack into one DataFrame."""
-    patterns = [
-        RAW_DIR / "gmaps" / "*.parquet",
-        RAW_DIR / "instagram" / "*.parquet",
+    """Load all BusinessRaw parquet files and stack into one DataFrame.
+
+    For gmaps: loads only the two city-level deduplicated files
+    (``medellin.parquet``, ``bogota.parquet``) — skips per-category and any
+    ``*_test.parquet`` / ``demo_*.parquet`` artefacts. Per-category files
+    contain the same place_ids; the city-level file is the authoritative
+    deduplicated output.
+
+    For instagram / paginas_amarillas / mercado_libre: loads everything in
+    the source directory, since we don't have a city-level rollup yet.
+    """
+    explicit_paths: list[Path] = [
+        RAW_DIR / "gmaps" / "medellin.parquet",
+        RAW_DIR / "gmaps" / "bogota.parquet",
     ]
+    glob_patterns: list[Path] = [
+        RAW_DIR / "instagram" / "*.parquet",
+        RAW_DIR / "paginas_amarillas" / "*.parquet",
+        RAW_DIR / "mercado_libre" / "*.parquet",
+    ]
+
     frames: list[pl.DataFrame] = []
-    for pattern in patterns:
-        for path in sorted(Path(pattern.parent).glob(pattern.name)):
-            if source_filter and source_filter not in path.stem:
-                continue
-            try:
-                df = pl.read_parquet(path)
-                frames.append(df)
-                logger.debug(f"Loaded {len(df)} rows from {path}")
-            except Exception as exc:  # noqa: BLE001
-                logger.warning(f"Could not read {path}: {exc}")
+    candidates: list[Path] = [p for p in explicit_paths if p.exists()]
+    for pattern in glob_patterns:
+        candidates.extend(sorted(Path(pattern.parent).glob(pattern.name)))
+
+    for path in candidates:
+        if source_filter and source_filter not in path.stem:
+            continue
+        try:
+            df = pl.read_parquet(path)
+            frames.append(df)
+            logger.debug(f"Loaded {len(df)} rows from {path}")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"Could not read {path}: {exc}")
 
     if not frames:
         logger.warning("No raw parquet files found.")
