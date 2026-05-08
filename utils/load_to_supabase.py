@@ -31,6 +31,12 @@ _TABLE_MODELS: dict[str, type] = {
     "businesses_canonical": BusinessCanonical,
 }
 
+# Each table has its own UNIQUE constraint that defines what "upsert" means.
+_TABLE_CONFLICT_KEYS: dict[str, str] = {
+    "businesses_raw": "source,source_id",
+    "businesses_canonical": "master_id",
+}
+
 _VALID_SOURCES = ["gmaps", "instagram", "paginas_amarillas", "mercado_libre"]
 _VALID_TABLES = list(_TABLE_MODELS.keys())
 
@@ -137,7 +143,8 @@ def _write_error_csv(invalid_rows: list[tuple[int, str]], source: str) -> Path:
     reraise=True,
 )
 def _upsert_batch(client: Any, table: str, batch: list[dict]) -> None:
-    client.table(table).upsert(batch, on_conflict="source,source_id").execute()
+    on_conflict = _TABLE_CONFLICT_KEYS.get(table, "source,source_id")
+    client.table(table).upsert(batch, on_conflict=on_conflict).execute()
 
 
 # ---------------------------------------------------------------------------
