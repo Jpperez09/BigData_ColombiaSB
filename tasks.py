@@ -97,15 +97,49 @@ def scrape_directories(c):
 
 
 @task
+def resolve(c, threshold=85, source=None, dry_run=False):
+    """Run entity resolution: merge all raw sources into businesses_canonical.
+
+    Examples::
+
+        invoke resolve                        # full run, threshold 85
+        invoke resolve --threshold 80         # looser fuzzy match
+        invoke resolve --source gmaps         # gmaps only (before Leo's data)
+        invoke resolve --dry-run              # preview without writing
+    """
+    cmd = f"python -m scoring.entity_resolution --threshold {threshold}"
+    if source:
+        cmd += f" --source {source}"
+    if dry_run:
+        cmd += " --dry-run"
+    c.run(cmd)
+
+
+@task
 def clean(c):
     """Remove intermediate and output files (placeholder — Week 2)."""
     print("TODO: implementar en Week 2")
 
 
 @task
-def score(c):
-    """Run the AI Readiness scoring pipeline (placeholder — Week 3)."""
-    print("TODO: implementar en Week 3")
+def score(c, top_n=500, city=None, min_score=0, output="data/clean/top_500.csv"):
+    """Compute AI Readiness scores and export top-N businesses.
+
+    Requires entity resolution to have run first (invoke resolve).
+
+    Examples::
+
+        invoke score                          # top 500 across all cities
+        invoke score --city Medellín          # single city
+        invoke score --top-n 200              # smaller export
+        invoke score --min-score 40           # only high-quality leads
+    """
+    cmd = f"python -m scoring.features --top-n {top_n} --output {output}"
+    if city:
+        cmd += f" --city \"{city}\""
+    if min_score:
+        cmd += f" --min-score {min_score}"
+    c.run(cmd)
 
 
 @task
