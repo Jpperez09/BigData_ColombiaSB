@@ -85,9 +85,38 @@ def scrape_gmaps(c, city=None, category=None, priority_max=2, budget_cap_usd=275
 
 
 @task
-def scrape_instagram(c):
-    """Scrape Instagram business profiles (placeholder — Week 1)."""
-    print("TODO: implementar en Week 1")
+def scrape_instagram(c, seed=None, dry_run=False):
+    """Scrape Instagram public business profiles.
+
+    By default reads handles from ``data/interim/gmaps_websites.parquet``
+    (produced by the gmaps scraper). Pass ``--seed path.csv`` for manual
+    testing with columns: handle, city[, category_raw].
+
+    Examples::
+
+        invoke scrape-instagram                       # full run from gmaps seeds
+        invoke scrape-instagram --dry-run             # count seeds, don't scrape
+        invoke scrape-instagram --seed seeds.csv      # manual handle list
+    """
+    cmd = "python -m scrapers.instagram.run"
+    if seed:
+        cmd += f" --seed {seed}"
+    if dry_run:
+        cmd += " --dry-run"
+    c.run(cmd)
+
+
+@task
+def gmaps_regen_websites(c):
+    """Rebuild data/interim/gmaps_websites.parquet from existing raw parquets.
+
+    Use after pulling new schema requirements (e.g., the instagram_handle
+    column needed by Leo's instagram scraper) without re-running the API.
+    """
+    c.run(
+        'python -c "from scrapers.gmaps.run import regenerate_websites_handoff;'
+        ' regenerate_websites_handoff()"'
+    )
 
 
 @task
