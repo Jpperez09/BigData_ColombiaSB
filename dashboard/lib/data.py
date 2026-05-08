@@ -31,6 +31,7 @@ _VALID_CITIES = ["Medellín", "Bogotá"]
 # Supabase client (lazy)
 # ---------------------------------------------------------------------------
 
+
 def _get_supabase_client() -> Any | None:
     """Return a Supabase client if credentials exist, else None.
 
@@ -43,9 +44,7 @@ def _get_supabase_client() -> Any | None:
     # Streamlit Cloud uses st.secrets — check before env vars
     try:
         url = st.secrets.get("SUPABASE_URL")
-        key = st.secrets.get("SUPABASE_SERVICE_KEY") or st.secrets.get(
-            "SUPABASE_ANON_KEY"
-        )
+        key = st.secrets.get("SUPABASE_SERVICE_KEY") or st.secrets.get("SUPABASE_ANON_KEY")
     except (FileNotFoundError, KeyError):
         pass
 
@@ -58,9 +57,7 @@ def _get_supabase_client() -> Any | None:
         except ImportError:
             pass
         url = url or os.environ.get("SUPABASE_URL")
-        key = key or os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get(
-            "SUPABASE_ANON_KEY"
-        )
+        key = key or os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_ANON_KEY")
 
     if not url or not key:
         return None
@@ -76,6 +73,7 @@ def _get_supabase_client() -> Any | None:
 # ---------------------------------------------------------------------------
 # Data loaders
 # ---------------------------------------------------------------------------
+
 
 @st.cache_data(ttl=_CACHE_TTL_SECONDS, show_spinner="Loading businesses…")
 def load_businesses() -> pd.DataFrame:

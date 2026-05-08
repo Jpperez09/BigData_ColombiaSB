@@ -126,15 +126,13 @@ def apply_filters(df: pd.DataFrame, f: dict) -> pd.DataFrame:
         out = out[out["neighborhood_display"].isin(f["neighborhoods"])]
 
     lo, hi = f["score_range"]
-    out = out[
-        (out["ai_readiness_score"] >= lo) & (out["ai_readiness_score"] <= hi)
-    ]
+    out = out[(out["ai_readiness_score"] >= lo) & (out["ai_readiness_score"] <= hi)]
 
     if f["has_whatsapp"]:
         # Either explicit whatsapp_flag or any phone present
-        has_phone = out["phone_e164"].notna() | out.get(
-            "phone_raw", pd.Series(dtype=object)
-        ).notna()
+        has_phone = (
+            out["phone_e164"].notna() | out.get("phone_raw", pd.Series(dtype=object)).notna()
+        )
         out = out[has_phone | (out["whatsapp_flag"] == True)]  # noqa: E712
 
     if f["has_instagram"]:
