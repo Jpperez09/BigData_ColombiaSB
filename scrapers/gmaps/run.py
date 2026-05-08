@@ -1,5 +1,8 @@
 """CLI entry point for the Google Maps scraper (target-zone H3 strategy).
 
+Re-exports ``regenerate_websites_handoff`` so scripts can rebuild the
+Instagram-scraper handoff parquet without re-running the API scrape.
+
 Common invocations
 ------------------
 
@@ -26,6 +29,7 @@ Full production scrape::
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from dataclasses import asdict
 from pathlib import Path
@@ -46,6 +50,67 @@ from scrapers.gmaps.scraper import scrape_cells_for_category
 from scrapers.gmaps.target_zones import list_all_zone_names
 
 ALL_CITIES = sorted(CITIES)
+
+
+# ---------------------------------------------------------------------------
+# Instagram-handle extraction (handoff to Leo's instagram scraper)
+# ---------------------------------------------------------------------------
+
+# Instagram usernames: lowercase letters, digits, period, underscore. Length 1-30.
+_IG_USERNAME_RE = re.compile(r"^[a-z0-9._]{1,30}$")
+
+# First-path-segment keywords on instagram.com that are NOT usernames.
+_IG_RESERVED = frozenset(
+    {
+        "p",
+        "reel",
+        "reels",
+        "tv",
+        "stories",
+        "explore",
+        "accounts",
+        "about",
+        "web",
+        "direct",
+        "hashtag",
+        "developer",
+        "developers",
+        "ads",
+        "legal",
+        "press",
+        "blog",
+        "help",
+        "support",
+        "ig",
+        "contact",
+    }
+)
+
+# Match the first path segment after instagram.com / instagr.am
+_IG_URL_RE = re.compile(
+    r"(?:https?://)?(?:www\.)?(?:instagram\.com|instagr\.am)/(?:#!/)?([^/?\s#]+)",
+    re.IGNORECASE,
+)
+
+
+def extract_instagram_handle(url: str | None) -> str | None:
+    """Pull an Instagram username out of a URL, or return None.
+
+    Recognises instagram.com and instagr.am hosts. Returns the bare
+    username (no leading ``@``), lowercased. Reserved paths like
+    ``/p/...`` (post), ``/reel/...``, ``/explore`` are rejected.
+    """
+    if not url:
+        return None
+    m = _IG_URL_RE.search(url)
+    if not m:
+        return None
+    candidate = m.group(1).strip().lower().rstrip("/")
+    if not candidate or candidate in _IG_RESERVED:
+        return None
+    if not _IG_USERNAME_RE.match(candidate):
+        return None
+    return candidate
 
 
 # ---------------------------------------------------------------------------
@@ -287,21 +352,86 @@ def _write_evidence_parquet(rows: list, path: Path) -> None:
 
 
 def _write_websites_parquet(businesses: list, path: Path) -> int:
-    website_rows = [
-        {
-            "source_id": b.source_id,
-            "name": b.name,
-            "city": b.city,
-            "website": b.website,
-        }
-        for b in businesses
-        if b.website
-    ]
+    """Write the Instagram-scraper handoff parquet.
+
+    Schema (consumed by ``scrapers.instagram.scraper.load_seed_from_parquet``):
+        source_id, name, city, website, instagram_handle, category_raw
+
+    ``instagram_handle`` is extracted from ``website`` when the URL points to
+    instagram.com / instagr.am; otherwise it's null. Rows with neither a
+    website nor an instagram_handle are skipped.
+    """
+    website_rows = []
+    for b in businesses:
+        ig_handle = extract_instagram_handle(b.website)
+        # Keep the row if it has either an extractable IG handle OR any website
+        # (Leo's loader filters to non-null instagram_handle, but we preserve
+        # the website column for future direct-handle extraction)
+        if not b.website and not ig_handle:
+            continue
+        website_rows.append(
+            {
+                "source_id": b.source_id,
+                "name": b.name,
+                "city": b.city,
+                "website": b.website,
+                "instagram_handle": ig_handle,
+                "category_raw": getattr(b, "category_raw", None),
+            }
+        )
     if not website_rows:
         return 0
     path.parent.mkdir(parents=True, exist_ok=True)
     pl.DataFrame(website_rows).write_parquet(str(path))
     return len(website_rows)
+
+
+def regenerate_websites_handoff(
+    raw_paths: list[Path] | None = None,
+    out_path: Path = Path("data/interim/gmaps_websites.parquet"),
+) -> int:
+    """Rebuild the Instagram handoff parquet from existing raw gmaps parquets.
+
+    Useful when the scrape has already run and we just need to add new
+    columns (instagram_handle, category_raw) without re-paying the API cost.
+    """
+    if raw_paths is None:
+        raw_paths = [
+            Path("data/raw/gmaps/medellin.parquet"),
+            Path("data/raw/gmaps/bogota.parquet"),
+        ]
+
+    rows: list[dict] = []
+    for p in raw_paths:
+        if not p.exists():
+            logger.warning(f"Skipping missing parquet: {p}")
+            continue
+        df = pl.read_parquet(p)
+        for r in df.iter_rows(named=True):
+            website = r.get("website")
+            ig_handle = extract_instagram_handle(website)
+            if not website and not ig_handle:
+                continue
+            rows.append(
+                {
+                    "source_id": r["source_id"],
+                    "name": r["name"],
+                    "city": r["city"],
+                    "website": website,
+                    "instagram_handle": ig_handle,
+                    "category_raw": r.get("category_raw"),
+                }
+            )
+
+    if not rows:
+        logger.warning("No website rows found — handoff parquet not written.")
+        return 0
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    pl.DataFrame(rows).write_parquet(str(out_path))
+    n_with_handle = sum(1 for r in rows if r["instagram_handle"])
+    logger.info(f"Wrote {len(rows)} rows → {out_path} " f"({n_with_handle} with instagram_handle)")
+    return len(rows)
 
 
 # ---------------------------------------------------------------------------
