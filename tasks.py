@@ -136,7 +136,7 @@ def score(c, top_n=500, city=None, min_score=0, output="data/clean/top_500.csv")
     """
     cmd = f"python -m scoring.features --top-n {top_n} --output {output}"
     if city:
-        cmd += f" --city \"{city}\""
+        cmd += f' --city "{city}"'
     if min_score:
         cmd += f" --min-score {min_score}"
     c.run(cmd)
