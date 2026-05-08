@@ -202,6 +202,40 @@ Union-Find and assigned a stable `master_id = uuid5(DNS, "city|name")`.
 
 ---
 
+## Streamlit Dashboard
+
+Multi-page Streamlit app for exploring the scored businesses interactively.
+
+```bash
+invoke dashboard
+# opens http://localhost:8501
+```
+
+**Pages:**
+
+- **Overview** — KPI cards (count, avg score, top vertical, top neighborhood) plus score histogram and per-vertical breakdowns
+- **Business Table** — searchable, filterable table with CSV export of the visible rows
+- **Map View** — Folium map with score-coloured markers (red high, blue low), clustered for performance
+- **Top 500** — pre-sorted ranking with one-click CSV download
+
+**Filters (shared across pages, sidebar):**
+city · vertical · score range · has-WhatsApp · has-Instagram · has-website · neighborhood · free-text search
+
+**Data source:**
+The dashboard reads `data/clean/scored.parquet` if present (richest — has per-feature scores), otherwise falls back to live Supabase. Cache TTL is 1 hour per `@st.cache_data`.
+
+**Streamlit Cloud deployment:**
+Copy `.streamlit/secrets.toml.template` → `.streamlit/secrets.toml` and fill in:
+
+```toml
+SUPABASE_URL = "https://your-project.supabase.co"
+SUPABASE_SERVICE_KEY = "your-service-role-key"
+```
+
+The actual `secrets.toml` is gitignored.
+
+---
+
 ## Stack
 
 - **Language:** Python 3.11
