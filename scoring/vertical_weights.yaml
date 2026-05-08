@@ -1,0 +1,37 @@
+# Vertical (category) weights — chat-based sales fit
+#
+# 1.0 → strongly chat-driven (clothing, beauty, food, jewellery): WhatsApp is the
+#       de-facto sales channel. AI agent has clear ROI.
+# 0.8 → moderately chat-driven (gyms, dental, bakeries): some funnel happens via
+#       chat but appointments / in-person visits matter too.
+# 0.5 → low chat fit (auto repair, real estate): customer needs in-person service
+#       or formal contract; chat agent has limited revenue impact.
+#
+# Source: working plan Section 7.1 + Juanpa's industry knowledge from Auren AI.
+# Defaults align with categories.py CATEGORY_PRIORITY but are independent —
+# priority is for scrape budgeting, vertical_weight is for revenue fit.
+
+verticals:
+  # Strong chat-driven verticals (1.0)
+  restaurants:        1.0
+  beauty_salons:      1.0
+  clothing_stores:    1.0
+  bakeries:           1.0
+  jewelry_stores:     1.0
+
+  # Moderate chat fit (0.8)
+  gyms:               0.8
+  dental_clinics:     0.8
+  optical_stores:     0.8
+  veterinarians:      0.8
+  photographers:      0.8
+
+  # Lower chat fit (0.5–0.6)
+  real_estate:        0.6
+  auto_repair:        0.5
+  cleaning_services:  0.7
+  language_schools:   0.7
+  tutoring_centers:   0.7
+
+# Default for any category not listed above.
+default: 0.7

@@ -48,23 +48,60 @@ LEGAL_SUFFIXES = re.compile(
 )
 
 # Generic category words that are useless as blocking keys
-_STOPWORDS = frozenset({
-    "restaurante", "restaurant", "cafe", "cafeteria", "cafetería",
-    "salon", "salón", "peluqueria", "peluquería", "spa",
-    "tienda", "almacen", "almacén", "boutique",
-    "clinica", "clínica", "consultorio",
-    "gimnasio", "gym",
-    "bar", "bar-restaurante", "panaderia", "panadería",
-    "joyeria", "joyería", "optica", "óptica",
-    "veterinaria", "veterinario",
-    "fotografia", "fotografía",
-    "academia", "instituto",
-    "servicio", "servicios",
-    "empresa", "grupo", "centro",
-    "inmobiliaria", "finca", "raiz", "raíz",
-    "taller",
-    "el", "la", "los", "las", "de", "del", "y",
-})
+_STOPWORDS = frozenset(
+    {
+        "restaurante",
+        "restaurant",
+        "cafe",
+        "cafeteria",
+        "cafetería",
+        "salon",
+        "salón",
+        "peluqueria",
+        "peluquería",
+        "spa",
+        "tienda",
+        "almacen",
+        "almacén",
+        "boutique",
+        "clinica",
+        "clínica",
+        "consultorio",
+        "gimnasio",
+        "gym",
+        "bar",
+        "bar-restaurante",
+        "panaderia",
+        "panadería",
+        "joyeria",
+        "joyería",
+        "optica",
+        "óptica",
+        "veterinaria",
+        "veterinario",
+        "fotografia",
+        "fotografía",
+        "academia",
+        "instituto",
+        "servicio",
+        "servicios",
+        "empresa",
+        "grupo",
+        "centro",
+        "inmobiliaria",
+        "finca",
+        "raiz",
+        "raíz",
+        "taller",
+        "el",
+        "la",
+        "los",
+        "las",
+        "de",
+        "del",
+        "y",
+    }
+)
 
 _FUZZY_THRESHOLD = 85  # WRatio score 0–100; 85 = tight, 80 = loose
 _UUID_NAMESPACE = uuid.NAMESPACE_DNS
@@ -73,6 +110,7 @@ _UUID_NAMESPACE = uuid.NAMESPACE_DNS
 # ---------------------------------------------------------------------------
 # Name normalisation
 # ---------------------------------------------------------------------------
+
 
 def _normalise(name: str) -> str:
     """Lowercase, strip accents, collapse whitespace, remove legal suffixes."""
@@ -98,6 +136,7 @@ def _first_significant_token(name_normalised: str) -> str:
 # ---------------------------------------------------------------------------
 # Union-Find
 # ---------------------------------------------------------------------------
+
 
 class _UF:
     def __init__(self) -> None:
@@ -125,6 +164,7 @@ class _UF:
 # ---------------------------------------------------------------------------
 # Loader
 # ---------------------------------------------------------------------------
+
 
 def _load_all_raw(source_filter: str | None = None) -> pl.DataFrame:
     """Load all BusinessRaw parquet files and stack into one DataFrame."""
@@ -156,6 +196,7 @@ def _load_all_raw(source_filter: str | None = None) -> pl.DataFrame:
 # ---------------------------------------------------------------------------
 # Blocking + fuzzy matching
 # ---------------------------------------------------------------------------
+
 
 def _fuzzy_match_block(
     indices: list[int],
@@ -189,7 +230,7 @@ def _resolve(df: pl.DataFrame, threshold: int) -> pl.DataFrame:
 
     # Block A: exact (city, phone_e164) — only non-null phones
     phone_blocks: dict[tuple[str, str], list[int]] = {}
-    for i, (city, phone) in enumerate(zip(cities, phones)):
+    for i, (city, phone) in enumerate(zip(cities, phones, strict=True)):
         if phone:
             key = (city, phone)
             phone_blocks.setdefault(key, []).append(i)
@@ -201,7 +242,7 @@ def _resolve(df: pl.DataFrame, threshold: int) -> pl.DataFrame:
 
     # Block B: (city, name_first_sig_token) — fuzzy match within block
     name_blocks: dict[tuple[str, str], list[int]] = {}
-    for i, (city, tok) in enumerate(zip(cities, first_tokens)):
+    for i, (city, tok) in enumerate(zip(cities, first_tokens, strict=True)):
         key = (city, tok)
         name_blocks.setdefault(key, []).append(i)
 
@@ -217,7 +258,7 @@ def _resolve(df: pl.DataFrame, threshold: int) -> pl.DataFrame:
     clusters = uf.clusters(list(range(n)))
     master_ids: list[str] = [""] * n
 
-    for root, members in clusters.items():
+    for _root, members in clusters.items():
         # Pick the best representative: longest normalised name in cluster
         rep_idx = max(members, key=lambda i: len(names_norm[i]))
         rep_key = f"{cities[rep_idx]}|{names_norm[rep_idx]}"
@@ -232,6 +273,7 @@ def _resolve(df: pl.DataFrame, threshold: int) -> pl.DataFrame:
 # Main pipeline
 # ---------------------------------------------------------------------------
 
+
 def run(
     threshold: int = _FUZZY_THRESHOLD,
     source_filter: str | None = None,
@@ -245,9 +287,7 @@ def run(
     # Ensure name_normalised column
     if "name_normalised" not in raw.columns or raw["name_normalised"].is_null().all():
         raw = raw.with_columns(
-            pl.col("name")
-            .map_elements(_normalise, return_dtype=pl.Utf8)
-            .alias("name_normalised")
+            pl.col("name").map_elements(_normalise, return_dtype=pl.Utf8).alias("name_normalised")
         )
     else:
         raw = raw.with_columns(
@@ -276,6 +316,7 @@ def run(
 
     if dry_run:
         import sys
+
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # Windows-safe
         print(out.select(["name", "city", "source", "master_id"]).head(20))
         logger.info("Dry run — no file written.")
@@ -290,6 +331,7 @@ def run(
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
+
 
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(

@@ -1,0 +1,17 @@
+# AI Readiness Score — feature weights
+#
+# Each feature returns a value in [0.0, 1.0]; the score is the weighted sum of
+# all features, then normalised to 0–100 by dividing by the sum of weights.
+#
+# Default weights are an initial guess based on the working plan (Section 7.1).
+# Tune during hand-label validation; commit each change with rationale in
+# docs/scoring.md.
+
+weights:
+  whatsapp_signal:     0.20  # phone present + flagged as WhatsApp
+  instagram_reach:     0.15  # log1p(followers) min-max scaled
+  instagram_activity:  0.15  # decay function on last_post_at (0–180 days)
+  catalog_signal:      0.10  # explicit IG product catalogue
+  review_volume:       0.10  # log1p(reviews_count) min-max scaled
+  vertical_weight:     0.20  # category-specific multiplier (vertical_weights.yaml)
+  geographic_weight:   0.10  # neighbourhood multiplier
