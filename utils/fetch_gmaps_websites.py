@@ -7,6 +7,7 @@ Three-pass enrichment:
 
 Checkpoint: data/interim/crawl_checkpoint.json — saves progress so you can
 stop with Ctrl+C and resume later without re-crawling sites already visited.
+Also saves url_to_handle mapping so gmaps rating/reviews can be joined later.
 
 Usage:
     python -m utils.fetch_gmaps_websites              # all three passes
@@ -38,7 +39,7 @@ _PAGE_SIZE = 1000
 _CRAWL_DELAY = 1.5
 _CRAWL_TIMEOUT = 8
 _MAX_CRAWL = 3000
-_SAVE_EVERY = 25  # save checkpoint every N sites crawled
+_SAVE_EVERY = 25
 
 _INSTAGRAM_RE = re.compile(r"instagram\.com/([A-Za-z0-9_.]+)/?", re.IGNORECASE)
 _IG_RESERVED = frozenset({"p", "explore", "accounts", "reel", "reels", "stories", "tv"})
@@ -74,21 +75,34 @@ def _crawl_website(url: str) -> str | None:
     return None
 
 
-def _load_checkpoint() -> tuple[dict[str, dict], set[str]]:
-    """Load saved enriched handles and set of already-crawled URLs."""
+def _load_checkpoint() -> tuple[dict[str, dict], set[str], dict[str, str]]:
+    """Load saved enriched handles, crawled URLs, and url→handle mapping."""
     if not _CHECKPOINT.exists():
-        return {}, set()
+        return {}, set(), {}
     data = json.loads(_CHECKPOINT.read_text())
-    enriched = {k: v for k, v in data.get("enriched", {}).items()}
+    enriched = dict(data.get("enriched", {}))
     crawled = set(data.get("crawled_urls", []))
-    logger.info(f"Checkpoint loaded: {len(enriched)} handles, {len(crawled)} URLs already crawled")
-    return enriched, crawled
+    url_to_handle = dict(data.get("url_to_handle", {}))
+    logger.info(
+        f"Checkpoint loaded: {len(enriched)} handles, "
+        f"{len(crawled)} URLs crawled, {len(url_to_handle)} url→handle mappings"
+    )
+    return enriched, crawled, url_to_handle
 
 
-def _save_checkpoint(enriched: dict[str, dict], crawled: set[str]) -> None:
+def _save_checkpoint(
+    enriched: dict[str, dict], crawled: set[str], url_to_handle: dict[str, str]
+) -> None:
     _CHECKPOINT.parent.mkdir(parents=True, exist_ok=True)
     _CHECKPOINT.write_text(
-        json.dumps({"enriched": enriched, "crawled_urls": sorted(crawled)}, indent=2)
+        json.dumps(
+            {
+                "enriched": enriched,
+                "crawled_urls": sorted(crawled),
+                "url_to_handle": url_to_handle,
+            },
+            indent=2,
+        )
     )
 
 
@@ -107,7 +121,7 @@ def fetch(dry_run: bool = False, no_crawl: bool = False) -> None:
     while True:
         resp = (
             client.table("businesses_raw")
-            .select("name, city, instagram_handle, website, category_raw")
+            .select("name, city, instagram_handle, website, category_raw, rating, reviews_count")
             .eq("source", "gmaps")
             .range(offset, offset + _PAGE_SIZE - 1)
             .execute()
@@ -121,8 +135,7 @@ def fetch(dry_run: bool = False, no_crawl: bool = False) -> None:
 
     logger.info(f"Total gmaps rows: {len(rows)}")
 
-    # Load checkpoint — picks up where a previous run left off
-    enriched, crawled_urls = _load_checkpoint()
+    enriched, crawled_urls, url_to_handle = _load_checkpoint()
 
     # Pass 1 + 2: instagram_handle column and regex on website URL
     needs_crawl: list[dict] = []
@@ -136,7 +149,14 @@ def fetch(dry_run: bool = False, no_crawl: bool = False) -> None:
                     "instagram_handle": handle.lstrip("@"),
                     "city": row["city"],
                     "category_raw": row.get("category_raw"),
+                    "gmaps_rating": row.get("rating"),
+                    "gmaps_reviews_count": row.get("reviews_count"),
+                    "gmaps_website": row.get("website"),
+                    "gmaps_name": row.get("name"),
                 }
+            # Save website→handle mapping for Pass 1+2
+            if row.get("website"):
+                url_to_handle[row["website"]] = handle.lstrip("@").lower()
         elif row.get("website") and row["website"] not in crawled_urls:
             needs_crawl.append(row)
 
@@ -148,7 +168,6 @@ def fetch(dry_run: bool = False, no_crawl: bool = False) -> None:
         logger.info(f"Pass 3: crawling {len(to_crawl)} websites (Ctrl+C to pause)...")
         found = 0
 
-        # Handle Ctrl+C gracefully — save checkpoint before exiting
         stop = False
 
         def _on_sigint(sig, frame):  # noqa: ANN001
@@ -167,20 +186,25 @@ def fetch(dry_run: bool = False, no_crawl: bool = False) -> None:
             crawled_urls.add(url)
             if handle:
                 h = handle.lower()
+                url_to_handle[url] = h  # save the mapping
                 if h not in enriched:
                     enriched[h] = {
                         "instagram_handle": handle,
                         "city": row["city"],
                         "category_raw": row.get("category_raw"),
+                        "gmaps_rating": row.get("rating"),
+                        "gmaps_reviews_count": row.get("reviews_count"),
+                        "gmaps_website": url,
+                        "gmaps_name": row.get("name"),
                     }
                     found += 1
             if i % _SAVE_EVERY == 0:
-                _save_checkpoint(enriched, crawled_urls)
+                _save_checkpoint(enriched, crawled_urls, url_to_handle)
                 logger.info(
                     f"  crawled {i}/{len(to_crawl)}, +{found} new handles (checkpoint saved)"
                 )
 
-        _save_checkpoint(enriched, crawled_urls)
+        _save_checkpoint(enriched, crawled_urls, url_to_handle)
         logger.info(f"Pass 3 done: +{found} new handles from website crawl")
 
         if stop:
