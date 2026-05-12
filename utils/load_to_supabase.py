@@ -144,7 +144,9 @@ def _write_error_csv(invalid_rows: list[tuple[int, str]], source: str) -> Path:
 )
 def _upsert_batch(client: Any, table: str, batch: list[dict]) -> None:
     on_conflict = _TABLE_CONFLICT_KEYS.get(table, "source,source_id")
-    client.table(table).upsert(batch, on_conflict=on_conflict).execute()
+    # Drop null `id` so the DB's uuid_generate_v4() default fires.
+    cleaned = [{k: v for k, v in r.items() if not (k == "id" and v is None)} for r in batch]
+    client.table(table).upsert(cleaned, on_conflict=on_conflict).execute()
 
 
 # ---------------------------------------------------------------------------

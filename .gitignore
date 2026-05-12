@@ -72,6 +72,7 @@ data/clean/**
 !data/**/.gitkeep
 *.parquet
 *.csv
+!data/demo/sample_500.parquet
 
 # ---------------------------------------------------------------------------
 # Logs
