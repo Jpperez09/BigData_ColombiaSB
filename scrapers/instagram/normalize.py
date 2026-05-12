@@ -62,7 +62,11 @@ def _last_post_date(profile: instaloader.Profile) -> datetime | None:
     """Return the UTC datetime of the most recent post, or None."""
     try:
         post = next(iter(profile.get_posts()))
-        return post.date_utc
+        dt = post.date_utc
+        # Ensure timezone-aware so comparison with datetime.now(timezone.utc) works
+        if dt is not None and dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
     except StopIteration:
         return None
     except Exception as exc:  # noqa: BLE001

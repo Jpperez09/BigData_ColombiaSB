@@ -6,6 +6,9 @@ _cfg = get_settings()
 
 BOT_NAME = "smb-intel-co"
 
+SPIDER_MODULES = ["scrapers.directories.spiders"]
+NEWSPIDER_MODULE = "scrapers.directories.spiders"
+
 ROBOTSTXT_OBEY = True
 
 DOWNLOAD_DELAY = 1.5
