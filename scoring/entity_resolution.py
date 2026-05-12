@@ -330,21 +330,60 @@ def run(
         f"({len(resolved) - n_clusters} duplicates merged)"
     )
 
-    # Select canonical output columns (drop helpers)
-    out = resolved.drop(["name_first_sig_token"], strict=False)
+    # Drop blocking helper columns
+    resolved = resolved.drop(["name_first_sig_token"], strict=False)
+
+    # Pick the best representative per master_id for the canonical table.
+    # Heuristic: prefer rows with more populated fields (richer data wins).
+    canonical = _select_canonical_per_cluster(resolved)
+    logger.info(f"Selected {len(canonical)} canonical representatives " f"(one row per master_id)")
 
     if dry_run:
         import sys
 
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # Windows-safe
-        print(out.select(["name", "city", "source", "master_id"]).head(20))
+        print(canonical.select(["name", "city", "source", "master_id"]).head(20))
         logger.info("Dry run — no file written.")
-        return out
+        return canonical
 
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    out.write_parquet(str(OUT_PATH))
-    logger.info(f"Wrote {len(out)} rows → {OUT_PATH}")
-    return out
+    canonical.write_parquet(str(OUT_PATH))
+    logger.info(f"Wrote {len(canonical)} canonical rows → {OUT_PATH}")
+
+    # Also write the full annotated raw frame (useful for backfilling
+    # businesses_raw.master_id without re-running resolution).
+    raw_annotated_path = OUT_PATH.parent / "businesses_raw_with_master.parquet"
+    resolved.write_parquet(str(raw_annotated_path))
+    logger.info(f"Wrote {len(resolved)} raw+master_id rows → {raw_annotated_path}")
+    return canonical
+
+
+def _select_canonical_per_cluster(df: pl.DataFrame) -> pl.DataFrame:
+    """Pick one representative row per master_id (richest data wins)."""
+    # Score each row by how many "interesting" fields are populated.
+    # Higher score = more data → better representative.
+    interesting_cols = [
+        "phone_e164",
+        "website",
+        "instagram_handle",
+        "rating",
+        "reviews_count",
+        "address_street",
+        "lat",
+        "lng",
+    ]
+    cols_present = [c for c in interesting_cols if c in df.columns]
+    completeness = pl.lit(0)
+    for c in cols_present:
+        completeness = completeness + pl.col(c).is_not_null().cast(pl.Int32)
+
+    df = df.with_columns(completeness.alias("_completeness"))
+    # Within each master_id, keep the row with the highest completeness
+    # (ties broken by name length — longer = usually more descriptive)
+    df = df.with_columns(pl.col("name").str.len_chars().alias("_name_len"))
+    df = df.sort(["master_id", "_completeness", "_name_len"], descending=[False, True, True])
+    canonical = df.unique(subset=["master_id"], keep="first")
+    return canonical.drop(["_completeness", "_name_len"], strict=False)
 
 
 # ---------------------------------------------------------------------------
