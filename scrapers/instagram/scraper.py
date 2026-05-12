@@ -5,7 +5,7 @@ data/interim/gmaps_websites.parquet or from a manual CSV — then fetches
 each profile via instaloader and writes validated BusinessRaw rows to
 data/raw/instagram/profiles.parquet.
 
-Throttle:   1 request per 2 seconds.
+Throttle:   5 seconds between requests.
 Rate-limit: sleep 15 minutes and resume automatically.
 Checkpoint: data/interim/ig_checkpoint.json — set of completed handles.
 """
@@ -37,7 +37,7 @@ _OUTPUT_PATH = Path("data/raw/instagram/profiles.parquet")
 # Timing
 # ---------------------------------------------------------------------------
 
-_REQUEST_DELAY = 2.0  # seconds between requests
+_REQUEST_DELAY = 5.0  # seconds between requests
 _RATE_LIMIT_SLEEP = 900  # 15 minutes when rate-limited
 
 
@@ -135,6 +135,23 @@ def _fetch_profiles(
         quiet=True,
     )
 
+    from utils.config import get_settings
+
+    cfg = get_settings()
+    if cfg.INSTAGRAM_USERNAME and cfg.INSTAGRAM_PASSWORD:
+        session_file = Path(f".instagram_session_{cfg.INSTAGRAM_USERNAME}")
+        try:
+            if session_file.exists():
+                loader.load_session_from_file(cfg.INSTAGRAM_USERNAME, str(session_file))
+                logger.info(f"Loaded saved session for @{cfg.INSTAGRAM_USERNAME}")
+            else:
+                loader.login(cfg.INSTAGRAM_USERNAME, cfg.INSTAGRAM_PASSWORD)
+                loader.save_session_to_file(str(session_file))
+                logger.info(f"Logged in and saved session for @{cfg.INSTAGRAM_USERNAME}")
+            time.sleep(5)  # let the session settle before making requests
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"Instagram login failed: {exc} — continuing without login")
+
     for seed in seeds:
         handle: str = seed["handle"]
         city: str = seed["city"]
@@ -217,7 +234,9 @@ def run(
         )
         if len(results) % checkpoint_every == 0:
             _save_checkpoint(done)
-            logger.info(f"Checkpoint saved ({len(done)} done total)")
+            rows = [r.model_dump() for r in results]
+            pl.DataFrame(rows).write_parquet(output_path)
+            logger.info(f"Checkpoint saved ({len(done)} done, {len(results)} profiles written)")
 
     _save_checkpoint(done)
 

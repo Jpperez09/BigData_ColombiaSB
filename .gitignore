@@ -60,6 +60,8 @@ coverage.xml
 .env.*
 !.env.template
 .streamlit/secrets.toml
+.instagram_session_*
+.scrapy/
 
 # ---------------------------------------------------------------------------
 # Data artifacts (keep .gitkeep markers tracked)
