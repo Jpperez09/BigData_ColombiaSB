@@ -21,6 +21,7 @@ import streamlit as st
 # ---------------------------------------------------------------------------
 
 _SCORED_PATH = Path("data/clean/scored.parquet")
+_DEMO_PATH = Path("data/demo/sample_500.parquet")
 _CANONICAL_TABLE = "businesses_canonical"
 _CACHE_TTL_SECONDS = 3600  # 1 hour
 
@@ -87,6 +88,11 @@ def load_businesses() -> pd.DataFrame:
     """
     if _SCORED_PATH.exists():
         df = pd.read_parquet(_SCORED_PATH)
+        df = _normalise_columns(df)
+        return df
+
+    if _DEMO_PATH.exists():
+        df = pd.read_parquet(_DEMO_PATH)
         df = _normalise_columns(df)
         return df
 
@@ -177,6 +183,8 @@ def get_data_source_label() -> str:
     """Human-readable label of where the current data came from."""
     if _SCORED_PATH.exists():
         return f"local parquet ({_SCORED_PATH})"
+    if _DEMO_PATH.exists():
+        return "demo dataset — 500 sampled businesses (data/demo/sample_500.parquet)"
     if _get_supabase_client() is not None:
         return "Supabase (no scores)"
     return "no data source available"
